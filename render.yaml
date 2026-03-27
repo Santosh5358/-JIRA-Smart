@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: jira-smart-backend
+    env: java
+    plan: free
+    branch: main
+    root: backend
+    buildCommand: mvn clean package
+    startCommand: java -jar target/*.jar
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SERVER_PORT
+        value: $PORT
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: JIRA_BASE_URL
+        value: "https://your-domain.atlassian.net"
+      - key: JIRA_API_TOKEN
+        value: "your-jira-api-token"
+      - key: JIRA_EMAIL
+        value: "your-email@company.com"
+      - key: OPENAI_API_KEY
+        value: "your-openai-api-key"
+      - key: CORS_ALLOWED_ORIGINS
+        value: "https://your-frontend-url.com"
