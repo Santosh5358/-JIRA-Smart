@@ -26,6 +26,12 @@ export class TimesheetComponent implements OnInit {
   customStartDate = '';
   customEndDate = '';
   useCustomDates = false;
+  endDateAutoSet = false;
+  toastMessage = '';
+  toastExiting = false;
+  private toastTimer: any;
+
+  readonly AUTO_RANGE_DAYS = 13; // Default to 2-week range if only start date is set
 
   constructor(
     private jiraApi: JiraApiService,
@@ -51,17 +57,13 @@ export class TimesheetComponent implements OnInit {
     this.isLoading = true;
     this.errorMessage = '';
 
-     // Auto-set end date to start date + 10 days if only start date is selected
-    if (this.useCustomDates && this.customStartDate && !this.customEndDate) {
-      const start = new Date(this.customStartDate);
-      start.setDate(start.getDate() + 13);
-      this.customEndDate = start.toISOString().split('T')[0];
-    }
+    const effectiveStartDate = this.useCustomDates && this.customStartDate ? this.customStartDate : undefined;
+    const effectiveEndDate = this.useCustomDates ? this.getEffectiveEndDate() : undefined;
 
     this.jiraApi.getSprintTimesheet(
       this.currentUser,
-      this.useCustomDates && this.customStartDate ? this.customStartDate : undefined,
-      this.useCustomDates && this.customEndDate ? this.customEndDate : undefined
+      effectiveStartDate,
+      effectiveEndDate
     ).subscribe({
       next: (data) => {
         this.timesheetData = data;
@@ -72,6 +74,60 @@ export class TimesheetComponent implements OnInit {
         this.isLoading = false;
       }
     });
+  }
+
+  /**
+   * Returns the effective end date:
+   * - If user selected an end date, use it.
+   * - If only start date is selected, default to start + AUTO_RANGE_DAYS.
+   * - Otherwise, undefined (backend uses sprint dates).
+   */
+  private getEffectiveEndDate(): string | undefined {
+    if (this.customEndDate) return this.customEndDate;
+    if (this.customStartDate) {
+      const start = new Date(this.customStartDate);
+      start.setDate(start.getDate() + this.AUTO_RANGE_DAYS);
+      return start.toISOString().split('T')[0];
+    }
+    return undefined;
+  }
+
+  onStartDateChange(): void {
+    if (this.customStartDate && !this.customEndDate) {
+      const start = new Date(this.customStartDate);
+      start.setDate(start.getDate() + this.AUTO_RANGE_DAYS);
+      this.customEndDate = start.toISOString().split('T')[0];
+      this.endDateAutoSet = true;
+      this.showToast(`End date auto-set to ${this.formatDate(this.customEndDate)} (start + ${this.AUTO_RANGE_DAYS} days)`);
+    }
+    this.loadTimesheet();
+  }
+
+  onEndDateChange(): void {
+    this.endDateAutoSet = false;
+    this.loadTimesheet();
+  }
+
+  showToast(message: string): void {
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastMessage = message;
+    this.toastExiting = false;
+    this.toastTimer = setTimeout(() => {
+      this.toastExiting = true;
+      setTimeout(() => {
+        this.toastMessage = '';
+        this.toastExiting = false;
+      }, 300);
+    }, 4000);
+  }
+
+  dismissToast(): void {
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastExiting = true;
+    setTimeout(() => {
+      this.toastMessage = '';
+      this.toastExiting = false;
+    }, 300);
   }
 
   getTimesheetTotalTarget(): number {

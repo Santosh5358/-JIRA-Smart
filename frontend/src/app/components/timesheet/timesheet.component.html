@@ -28,14 +28,23 @@
     <div class="date-filter-inputs" *ngIf="useCustomDates">
       <div class="date-field">
         <label class="date-label">Start Date</label>
-        <input type="date" class="date-input" [(ngModel)]="customStartDate" (change)="loadTimesheet()" />
+        <input type="date" class="date-input" [(ngModel)]="customStartDate" (change)="onStartDateChange()" />
       </div>
       <span class="date-arrow material-icons-outlined">arrow_forward</span>
       <div class="date-field">
         <label class="date-label">End Date</label>
-        <input type="date" class="date-input" [(ngModel)]="customEndDate" (change)="loadTimesheet()" />
+        <input type="date" class="date-input" [(ngModel)]="customEndDate" (change)="onEndDateChange()" [min]="customStartDate" />
       </div>
     </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="ts-toast" *ngIf="toastMessage" [class.ts-toast-exit]="toastExiting">
+    <span class="material-icons-outlined ts-toast-icon">info</span>
+    <span class="ts-toast-text">{{ toastMessage }}</span>
+    <button class="ts-toast-close" (click)="dismissToast()">
+      <span class="material-icons-outlined">close</span>
+    </button>
   </div>
 
   <!-- Loading -->

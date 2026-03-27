@@ -104,7 +104,7 @@
 
 .date-filter-inputs {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 12px;
 }
 
@@ -112,6 +112,8 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  position: relative;
+  min-width: 150px;
 }
 
 .date-label {
@@ -120,10 +122,11 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
+  line-height: 1;
 }
 
 .date-input {
-  padding: 6px 10px;
+  padding: 7px 10px;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-sm);
   font-family: inherit;
@@ -132,6 +135,8 @@
   background: var(--bg-primary);
   outline: none;
   transition: border-color 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
 
   &:focus {
     border-color: var(--primary);
@@ -142,7 +147,88 @@
 .date-arrow {
   font-size: 16px;
   color: var(--text-muted);
-  padding-bottom: 6px;
+  margin-top: 14px;
+}
+
+/* Toast Notification */
+.ts-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--primary, #0052cc);
+  border-left: 4px solid var(--primary, #0052cc);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+  animation: ts-toast-in 0.35s cubic-bezier(0.21, 1.02, 0.73, 1) forwards;
+  max-width: 420px;
+}
+
+.ts-toast-exit {
+  animation: ts-toast-out 0.3s ease-in forwards;
+}
+
+.ts-toast-icon {
+  font-size: 20px;
+  color: var(--primary, #0052cc);
+  flex-shrink: 0;
+}
+
+.ts-toast-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #172b4d);
+  line-height: 1.4;
+}
+
+.ts-toast-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: var(--text-muted, #97a0af);
+  flex-shrink: 0;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+
+  .material-icons-outlined {
+    font-size: 16px;
+  }
+
+  &:hover {
+    color: var(--text-primary, #172b4d);
+    background: rgba(0, 0, 0, 0.06);
+  }
+}
+
+@keyframes ts-toast-in {
+  0% {
+    opacity: 0;
+    transform: translateX(40px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes ts-toast-out {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(40px) scale(0.95);
+  }
 }
 
 /* Loading */
