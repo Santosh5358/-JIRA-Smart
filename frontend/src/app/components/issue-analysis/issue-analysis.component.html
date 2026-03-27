@@ -1,0 +1,707 @@
+<div class="analysis-container fade-in">
+  <!-- Back Button & Header -->
+  <div class="analysis-header">
+    <div class="header-actions">
+      <button class="btn btn-secondary" (click)="goBack()">
+        <span class="material-icons-outlined">arrow_back</span>
+        Back
+      </button>
+      <button class="btn btn-primary reanalyze-btn" (click)="reAnalyze()" *ngIf="analysis && !isLoadingAnalysis">
+        <span class="material-icons-outlined">refresh</span>
+        Re-Analyze
+      </button>
+    </div>
+
+    <!-- Fallback Warning -->
+    <div class="fallback-banner" *ngIf="isAiFallback && !isLoadingAnalysis">
+      <span class="material-icons-outlined">cloud_off</span>
+      <div class="fallback-text">
+        <strong>AI service was unreachable</strong> — showing generic placeholder guidance.
+        Check your OpenAI API key and network, then click <strong>Re-Analyze</strong> to try again.
+      </div>
+    </div>
+
+    <!-- Header from issue details (loads instantly) -->
+    <div class="header-info" *ngIf="issueDetails">
+      <div class="header-badges">
+        <span class="badge" [class]="getTypeBadgeClass(issueDetails.issueType)">{{ issueDetails.issueType }}</span>
+        <span class="badge" [class]="getStatusBadgeClass(issueDetails.status || '')">
+          {{ issueDetails.status }}
+        </span>
+      </div>
+      <h1 class="issue-title">
+        <span class="issue-key-label">{{ issueDetails.key }}</span>
+        {{ issueDetails.summary }}
+      </h1>
+      <div class="header-meta">
+        <span *ngIf="issueDetails.projectName">
+          <span class="material-icons-outlined">folder</span>
+          {{ issueDetails.projectName }}
+        </span>
+        <span *ngIf="issueDetails.assignee">
+          <span class="material-icons-outlined">person</span>
+          {{ issueDetails.assignee }}
+        </span>
+        <span *ngIf="issueDetails.sprintName">
+          <span class="material-icons-outlined">directions_run</span>
+          {{ issueDetails.sprintName }}
+        </span>
+        <span *ngIf="issueDetails.priority">
+          <span class="material-icons-outlined">flag</span>
+          {{ issueDetails.priority }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Details -->
+  <div class="loading-container" *ngIf="isLoadingDetails">
+    <div class="spinner"></div>
+    <p>Loading <strong>{{ issueKey }}</strong>...</p>
+  </div>
+
+  <!-- Loading AI Analysis -->
+  <div class="loading-container" *ngIf="isLoadingAnalysis">
+    <div class="spinner"></div>
+    <p>Analyzing <strong>{{ issueKey }}</strong> with AI...</p>
+    <p class="loading-sub">Gathering linked issues, epic context, attachments & comments</p>
+  </div>
+
+  <!-- Error -->
+  <div class="error-banner" *ngIf="errorMessage">
+    <span class="material-icons-outlined">error_outline</span>
+    <span>{{ errorMessage }}</span>
+    <button class="btn btn-secondary btn-sm" (click)="loadIssueDetails()">Retry</button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-bar" *ngIf="issueDetails">
+    <button
+      class="tab-btn"
+      [class.active]="activeTab === 'details'"
+      (click)="setTab('details')"
+    >
+      <span class="material-icons-outlined">description</span>
+      Issue Details
+    </button>
+    <button
+      class="tab-btn"
+      [class.active]="activeTab === 'analysis'"
+      (click)="setTab('analysis')"
+    >
+      <span class="material-icons-outlined">auto_awesome</span>
+      AI Analysis
+      <span class="ai-badge" *ngIf="!analysis && !isLoadingAnalysis">click to run</span>
+    </button>
+    <button
+      class="tab-btn"
+      [class.active]="activeTab === 'context'"
+      (click)="setTab('context')"
+    >
+      <span class="material-icons-outlined">account_tree</span>
+      Linked Context
+    </button>
+    <button
+      class="tab-btn"
+      [class.active]="activeTab === 'prs'"
+      (click)="setTab('prs')"
+      *ngIf="analysis?.pullRequests?.length"
+    >
+      <span class="material-icons-outlined">merge_type</span>
+      Pull Requests
+      <span class="pr-count-badge">{{ analysis!.pullRequests.length }}</span>
+    </button>
+  </div>
+
+  <!-- ============ TAB: AI Analysis ============ -->
+  <div class="tab-content ai-analysis-content" *ngIf="analysis && activeTab === 'analysis'">
+
+    <!-- TL;DR -->
+    <div class="analysis-section card highlight-card">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon action-icon">bolt</span>
+        <h2>TL;DR</h2>
+      </div>
+      <div class="section-body tldr-text" [innerHTML]="formatAiText(analysis.tldr)"></div>
+    </div>
+
+    <!-- Blockers Alert -->
+    <div class="analysis-section card alert-card" *ngIf="analysis.blockers && analysis.blockers !== 'NONE' && analysis.blockers.toLowerCase() !== 'none'">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon alert-icon">block</span>
+        <h2>Blockers</h2>
+      </div>
+      <div class="section-body" [innerHTML]="formatAiText(analysis.blockers)"></div>
+    </div>
+
+    <!-- Comment Insights -->
+    <div class="analysis-section card comment-insights-card" *ngIf="analysis.commentInsights && !analysis.commentInsights.toLowerCase().includes('no actionable')">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon comment-icon">chat</span>
+        <h2>Key Insights from Comments</h2>
+      </div>
+      <div class="section-body" [innerHTML]="formatAiText(analysis.commentInsights)"></div>
+    </div>
+
+    <!-- Implementation Steps -->
+    <div class="analysis-section card" *ngIf="analysis.implementationSteps">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon tech-icon">code</span>
+        <h2>Implementation Steps</h2>
+      </div>
+      <div class="section-body ai-rendered" [innerHTML]="formatAiText(analysis.implementationSteps)"></div>
+    </div>
+
+    <!-- Technical Analysis -->
+    <div class="analysis-section card" *ngIf="analysis.technicalAnalysis">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon tech-icon">terminal</span>
+        <h2>Technical Deep-Dive</h2>
+      </div>
+      <div class="section-body ai-rendered" [innerHTML]="formatAiText(analysis.technicalAnalysis)"></div>
+    </div>
+
+    <!-- Files & Components -->
+    <div class="analysis-section card" *ngIf="analysis.filesAndComponents">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon file-icon">folder_open</span>
+        <h2>Files &amp; Components to Change</h2>
+      </div>
+      <div class="section-body ai-rendered" [innerHTML]="formatAiText(analysis.filesAndComponents)"></div>
+    </div>
+
+    <!-- Edge Cases & Action Items side by side -->
+    <div class="two-col">
+      <!-- Edge Cases -->
+      <div class="analysis-section card edge-cases-card" *ngIf="analysis.edgeCasesAndTraps && analysis.edgeCasesAndTraps.length > 0">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon risk-icon">warning</span>
+          <h2>Edge Cases &amp; Traps</h2>
+          <span class="header-count">{{ analysis.edgeCasesAndTraps.length }}</span>
+        </div>
+        <div class="scenario-list">
+          <div class="scenario-card trap-card" *ngFor="let item of analysis.edgeCasesAndTraps; let i = index">
+            <div class="scenario-badge trap-badge">
+              <span class="material-icons-outlined">warning_amber</span>
+            </div>
+            <div class="scenario-body">
+              <div class="scenario-num">Edge Case #{{ i + 1 }}</div>
+              <div class="scenario-text" [innerHTML]="formatAiText(item)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Items -->
+      <div class="analysis-section card" *ngIf="analysis.actionItems && analysis.actionItems.length > 0">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon checklist-icon">playlist_add_check</span>
+          <h2>Action Items</h2>
+          <span class="header-count">{{ analysis.actionItems.length }}</span>
+        </div>
+        <div class="action-items">
+          <div class="action-item" *ngFor="let item of analysis.actionItems; let i = index">
+            <span class="action-number">{{ i + 1 }}</span>
+            <span [innerHTML]="formatAiText(item)"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Test Cases & Code Review side by side -->
+    <div class="two-col">
+      <!-- Test Cases -->
+      <div class="analysis-section card test-cases-card" *ngIf="analysis.testCases && analysis.testCases.length > 0">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon test-icon">science</span>
+          <h2>Test Cases</h2>
+          <span class="header-count">{{ analysis.testCases.length }}</span>
+        </div>
+        <div class="scenario-list">
+          <div class="scenario-card test-card" *ngFor="let item of analysis.testCases; let i = index">
+            <div class="scenario-badge test-badge">
+              <span class="scenario-badge-text">T{{ i + 1 }}</span>
+            </div>
+            <div class="scenario-body">
+              <div class="scenario-num">Test #{{ i + 1 }}</div>
+              <div class="scenario-text" [innerHTML]="formatAiText(item)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Code Review Checklist -->
+      <div class="analysis-section card" *ngIf="analysis.codeReviewChecklist && analysis.codeReviewChecklist.length > 0">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon dod-icon">checklist_rtl</span>
+          <h2>PR Review Checklist</h2>
+        </div>
+        <div class="action-items">
+          <div class="action-item dod-item" *ngFor="let item of analysis.codeReviewChecklist">
+            <span class="action-number dod-number">&#10003;</span>
+            <span [innerHTML]="formatAiText(item)"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Ref & Effort side by side -->
+    <div class="two-col">
+      <div class="analysis-section card" *ngIf="analysis.quickRef">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon domain-icon">menu_book</span>
+          <h2>Quick Reference</h2>
+        </div>
+        <div class="section-body" [innerHTML]="formatAiText(analysis.quickRef)"></div>
+      </div>
+
+      <div class="analysis-section card effort-card" *ngIf="analysis.effort">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon effort-icon">schedule</span>
+          <h2>Effort Estimate</h2>
+        </div>
+        <div class="section-body effort-text" [innerHTML]="formatAiText(analysis.effort)"></div>
+      </div>
+    </div>
+
+    <!-- ========= PR CODE ANALYSIS (from AI) — only shown when PRs exist ========= -->
+    <div class="pr-analysis-section" *ngIf="hasPrAnalysis()">
+      <div class="section-divider">
+        <span class="material-icons-outlined">merge_type</span>
+        <span>Code Changes Analysis (from GitHub PRs)</span>
+      </div>
+
+      <!-- PR Summary -->
+      <div class="analysis-section card pr-highlight-card">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon pr-icon">integration_instructions</span>
+          <h2>PR Summary — What Was Built</h2>
+        </div>
+        <div class="section-body ai-rendered" [innerHTML]="formatAiText(analysis.prSummary)"></div>
+      </div>
+
+      <!-- PR Code Analysis -->
+      <div class="analysis-section card" *ngIf="analysis.prCodeAnalysis">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon pr-review-icon">rate_review</span>
+          <h2>Requirement vs Code — Gap Analysis</h2>
+        </div>
+        <div class="section-body ai-rendered" [innerHTML]="formatAiText(analysis.prCodeAnalysis)"></div>
+      </div>
+
+      <!-- PR Suggestions -->
+      <div class="analysis-section card" *ngIf="analysis.prSuggestions && analysis.prSuggestions.length > 0">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon action-icon">tips_and_updates</span>
+          <h2>What You Need to Do (Based on PR Code)</h2>
+        </div>
+        <div class="action-items">
+          <div class="action-item pr-suggestion-item" *ngFor="let item of analysis.prSuggestions; let i = index">
+            <span class="action-number pr-number">{{ i + 1 }}</span>
+            <span [innerHTML]="formatAiText(item)"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: Pull Requests (only visible when PRs exist) ============ -->
+  <div class="tab-content" *ngIf="activeTab === 'prs' && analysis?.pullRequests?.length">
+
+    <!-- AI Code Analysis Summary (top of PR tab) -->
+    <div class="pr-ai-summary" *ngIf="hasPrAnalysis()">
+      <div class="analysis-section card pr-highlight-card">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon pr-icon">auto_awesome</span>
+          <h2>AI Code Analysis</h2>
+        </div>
+        <div class="section-body ai-rendered" [innerHTML]="formatAiText(analysis!.prSummary)"></div>
+      </div>
+    </div>
+
+    <!-- Individual PR cards -->
+    <div *ngFor="let pr of analysis!.pullRequests" class="analysis-section card pr-card">
+      <div class="pr-card-header">
+        <div class="pr-title-row">
+          <span class="badge pr-state-badge" [ngClass]="{
+            'badge-pr-open': pr.state === 'open',
+            'badge-pr-merged': pr.state === 'merged',
+            'badge-pr-closed': pr.state === 'closed'
+          }">{{ pr.state }}</span>
+          <a [href]="pr.url" target="_blank" rel="noopener" class="pr-title-link">
+            #{{ pr.prNumber }} — {{ pr.title }}
+          </a>
+        </div>
+        <div class="pr-meta">
+          <span><strong>Author:</strong> {{ pr.author }}</span>
+          <span><strong>Branch:</strong> {{ pr.branch }} → {{ pr.targetBranch }}</span>
+          <span><strong>Repo:</strong> {{ pr.repoFullName }}</span>
+          <span class="pr-stats">
+            <span class="pr-additions">+{{ pr.additions }}</span>
+            <span class="pr-deletions">-{{ pr.deletions }}</span>
+            <span>{{ pr.changedFiles }} files</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Files Changed -->
+      <div class="pr-files" *ngIf="pr.files?.length">
+        <h3>Files Changed</h3>
+        <div class="pr-file-list">
+          <div *ngFor="let file of pr.files" class="pr-file-item">
+            <div class="pr-file-header">
+              <span class="badge pr-file-status" [ngClass]="{
+                'badge-file-added': file.status === 'added',
+                'badge-file-modified': file.status === 'modified',
+                'badge-file-removed': file.status === 'removed',
+                'badge-file-renamed': file.status === 'renamed'
+              }">{{ file.status }}</span>
+              <span class="pr-filename">{{ file.filename }}</span>
+              <span class="pr-file-stats">
+                <span class="pr-additions">+{{ file.additions }}</span>
+                <span class="pr-deletions">-{{ file.deletions }}</span>
+              </span>
+            </div>
+            <pre class="pr-patch" *ngIf="file.patch">{{ file.patch }}</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: Issue Details ============ -->
+  <div class="tab-content" *ngIf="issueDetails && activeTab === 'details'">
+
+    <!-- Issue Metadata (at top for quick overview) -->
+    <div class="analysis-section card meta-card">
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">Type</span>
+          <span class="meta-value">
+            <span class="badge" [class]="getTypeBadgeClass(issueDetails.issueType)">{{ issueDetails.issueType }}</span>
+          </span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Status</span>
+          <span class="meta-value">
+            <span class="badge" [class]="getStatusBadgeClass(issueDetails.status)">{{ issueDetails.status }}</span>
+          </span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Priority</span>
+          <span class="meta-value priority-value">
+            <span class="material-icons-outlined priority-icon">flag</span>
+            {{ issueDetails.priority || '—' }}
+          </span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Reporter</span>
+          <span class="meta-value person-value">
+            <span class="material-icons-outlined person-icon">person_outline</span>
+            {{ issueDetails.reporter || '—' }}
+          </span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Assignee</span>
+          <span class="meta-value person-value">
+            <span class="material-icons-outlined person-icon">person</span>
+            {{ issueDetails.assignee || 'Unassigned' }}
+          </span>
+        </div>
+        <div class="meta-item" *ngIf="issueDetails.epicKey">
+          <span class="meta-label">Epic</span>
+          <span class="meta-value epic-value">
+            <span class="material-icons-outlined epic-icon">bolt</span>
+            {{ issueDetails.epicKey }} — {{ issueDetails.epicName }}
+          </span>
+        </div>
+        <div class="meta-item" *ngIf="issueDetails.sprintName">
+          <span class="meta-label">Sprint</span>
+          <span class="meta-value sprint-value">
+            <span class="material-icons-outlined sprint-icon">directions_run</span>
+            {{ issueDetails.sprintName }}
+          </span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Created</span>
+          <span class="meta-value">{{ formatDate(issueDetails.created) }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Updated</span>
+          <span class="meta-value">{{ formatDate(issueDetails.updated) }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Description (rich rendered) -->
+    <div class="analysis-section card" *ngIf="issueDetails.description">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon desc-icon">description</span>
+        <h2>Description</h2>
+      </div>
+      <div class="jira-rich-content" [innerHTML]="formatJiraMarkup(issueDetails.description)"></div>
+    </div>
+
+    <!-- Acceptance Criteria (rich rendered) -->
+    <div class="analysis-section card ac-card" *ngIf="issueDetails.acceptanceCriteria">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon ac-icon">checklist</span>
+        <h2>Acceptance Criteria</h2>
+      </div>
+      <div class="jira-rich-content" [innerHTML]="formatJiraMarkup(issueDetails.acceptanceCriteria)"></div>
+    </div>
+
+    <!-- Linked Issues — grouped by type -->
+    <div class="analysis-section card linked-context-card" *ngIf="issueDetails.linkedIssues?.length">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon link-icon">share</span>
+        <h2>Linked Context ({{ issueDetails.linkedIssues.length }})</h2>
+      </div>
+
+      <div class="linked-groups" *ngFor="let group of getLinkedGroups()">
+        <!-- Group header -->
+        <div class="linked-group-header">
+          <span class="material-icons-outlined linked-group-icon" [style.color]="group.color">{{ group.icon }}</span>
+          <span class="linked-group-title">{{ group.category }}</span>
+          <span class="linked-group-count">{{ group.items.length }}</span>
+        </div>
+
+        <!-- Items in this group -->
+        <div class="linked-card" *ngFor="let linked of group.items"
+             (click)="router.navigate(['/issue', linked.issueKey])">
+          <div class="linked-card-left">
+            <span class="material-icons-outlined linked-type-icon" [style.color]="group.color">{{ getTypeIcon(linked.issueType) }}</span>
+          </div>
+          <div class="linked-card-body">
+            <div class="linked-card-top-row">
+              <span class="linked-card-key">{{ linked.issueKey }}</span>
+              <span class="badge" [class]="getTypeBadgeClass(linked.issueType)">{{ linked.issueType }}</span>
+              <span class="badge" [class]="getStatusBadgeClass(linked.issueStatus)">{{ linked.issueStatus }}</span>
+              <span class="linked-priority-dot" *ngIf="linked.priority"
+                    [style.background]="getPriorityColor(linked.priority)"
+                    [title]="linked.priority"></span>
+            </div>
+            <div class="linked-card-summary">{{ linked.issueSummary }}</div>
+            <div class="linked-card-relation">
+              <span class="material-icons-outlined linked-rel-icon">swap_horiz</span>
+              <span class="linked-rel-text">{{ linked.relationshipDesc || (linked.linkType + ' (' + linked.direction + ')') }}</span>
+            </div>
+          </div>
+          <span class="material-icons-outlined linked-card-arrow">chevron_right</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Subtasks -->
+    <div class="analysis-section card" *ngIf="issueDetails.subtasks?.length">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon subtask-icon">subdirectory_arrow_right</span>
+        <h2>Subtasks ({{ issueDetails.subtasks.length }})</h2>
+      </div>
+      <div class="subtask-list">
+        <div class="subtask-item" *ngFor="let st of issueDetails.subtasks" (click)="router.navigate(['/issue', st.key])">
+          <span class="subtask-key">{{ st.key }}</span>
+          <span class="subtask-summary">{{ st.summary }}</span>
+          <span class="badge" [class]="getStatusBadgeClass(st.status)">{{ st.status }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comments (rich rendered) -->
+    <div class="analysis-section card" *ngIf="issueDetails.comments?.length">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon comment-icon">chat</span>
+        <h2>Comments ({{ issueDetails.comments.length }})</h2>
+      </div>
+      <div class="comment-list">
+        <div class="comment-item" *ngFor="let comment of issueDetails.comments; let i = index; let last = last">
+          <div class="comment-header">
+            <div class="comment-avatar">
+              <span class="material-icons-outlined">account_circle</span>
+            </div>
+            <div class="comment-meta">
+              <strong class="comment-author">{{ comment.author }}</strong>
+              <span class="comment-date">{{ formatDate(comment.created) }}</span>
+            </div>
+            <span class="comment-index">#{{ i + 1 }}</span>
+          </div>
+          <div class="comment-body jira-rich-content" [innerHTML]="formatJiraMarkup(comment.body)"></div>
+          <hr class="comment-divider" *ngIf="!last">
+        </div>
+      </div>
+    </div>
+
+    <!-- Attachments — rich display -->
+    <div class="analysis-section card" *ngIf="issueDetails.attachments?.length">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon attach-icon">attach_file</span>
+        <h2>Attachments ({{ issueDetails.attachments.length }})</h2>
+      </div>
+
+      <!-- Image gallery -->
+      <div class="att-image-gallery" *ngIf="getImageAttachments().length > 0">
+        <div class="att-image-card" *ngFor="let att of getImageAttachments()">
+          <div class="att-image-wrapper" (click)="openLightbox(att.contentUrl, att.mimeType, att.filename)">
+            <img [src]="getProxyUrl(att.thumbnailUrl || att.contentUrl, att.mimeType)"
+                 [alt]="att.filename"
+                 loading="lazy"
+                 (error)="$any($event.target).style.display='none'" />
+            <div class="att-image-zoom-hint">
+              <span class="material-icons-outlined">zoom_in</span>
+            </div>
+          </div>
+          <div class="att-image-info">
+            <span class="att-image-name">{{ att.filename }}</span>
+            <span class="att-image-meta">{{ formatFileSize(att.size) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- File list (non-image) -->
+      <div class="att-file-list">
+        <ng-container *ngFor="let att of issueDetails.attachments">
+          <div class="att-file-card" *ngIf="!isImage(att.mimeType)">
+            <div class="att-file-icon-box" [ngClass]="getFileColorClass(att.mimeType, att.filename)">
+              <span class="material-icons-outlined">{{ getFileIcon(att.mimeType, att.filename) }}</span>
+            </div>
+            <div class="att-file-body">
+              <span class="att-file-name">{{ att.filename }}</span>
+              <span class="att-file-meta">
+                {{ att.mimeType }} &middot; {{ formatFileSize(att.size) }}
+                <span *ngIf="att.author"> &middot; {{ att.author }}</span>
+              </span>
+            </div>
+            <span class="att-text-badge" *ngIf="isTextFile(att.mimeType)">
+              <span class="material-icons-outlined">auto_awesome</span> AI reads this
+            </span>
+            <a class="att-download-btn" [href]="getProxyUrl(att.contentUrl, att.mimeType)" target="_blank"
+               title="Download">
+              <span class="material-icons-outlined">download</span>
+            </a>
+          </div>
+        </ng-container>
+      </div>
+    </div>
+
+    <!-- Labels & Components -->
+    <div class="two-col" *ngIf="issueDetails.labels?.length || issueDetails.components?.length">
+      <div class="analysis-section card" *ngIf="issueDetails.labels?.length">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon">label</span>
+          <h2>Labels</h2>
+        </div>
+        <div class="tag-list">
+          <span class="tag" *ngFor="let label of issueDetails.labels">{{ label }}</span>
+        </div>
+      </div>
+
+      <div class="analysis-section card" *ngIf="issueDetails.components?.length">
+        <div class="section-header">
+          <span class="material-icons-outlined section-icon">widgets</span>
+          <h2>Components</h2>
+        </div>
+        <div class="tag-list">
+          <span class="tag" *ngFor="let comp of issueDetails.components">{{ comp }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: Linked Context ============ -->
+  <div class="tab-content" *ngIf="analysis && activeTab === 'context'">
+    <!-- Epic -->
+    <div class="analysis-section card epic-context-card" *ngIf="analysis.epicDetails">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon" style="color: #6554c0">auto_awesome</span>
+        <h2>Parent Epic</h2>
+      </div>
+      <div class="context-issue-card epic-highlight" (click)="router.navigate(['/issue', analysis.epicDetails.key])">
+        <div class="context-issue-icon-box" style="background: linear-gradient(135deg, #6554c0, #8777d9);">
+          <span class="material-icons-outlined">auto_awesome</span>
+        </div>
+        <div class="context-issue-body">
+          <div class="context-issue-top">
+            <span class="context-issue-key">{{ analysis.epicDetails.key }}</span>
+            <span class="badge badge-epic">Epic</span>
+            <span class="badge" [class]="getStatusBadgeClass(analysis.epicDetails.status)">{{ analysis.epicDetails.status }}</span>
+          </div>
+          <div class="context-issue-summary">{{ analysis.epicDetails.summary }}</div>
+          <div class="context-issue-desc" *ngIf="analysis.epicDetails.description">
+            {{ analysis.epicDetails.description.length > 200 ? analysis.epicDetails.description.substring(0, 200) + '...' : analysis.epicDetails.description }}
+          </div>
+        </div>
+        <span class="material-icons-outlined context-issue-arrow">chevron_right</span>
+      </div>
+    </div>
+
+    <!-- Linked Issues -->
+    <div class="analysis-section card" *ngIf="analysis.linkedIssueDetails?.length">
+      <div class="section-header">
+        <span class="material-icons-outlined section-icon link-icon">share</span>
+        <h2>Linked Issues ({{ analysis.linkedIssueDetails.length }})</h2>
+      </div>
+      <div class="context-issue-list">
+        <div class="context-issue-card"
+             *ngFor="let linked of analysis.linkedIssueDetails"
+             (click)="router.navigate(['/issue', linked.key])">
+          <div class="context-issue-icon-box" [ngClass]="'type-bg-' + (linked.issueType || 'default').toLowerCase()">
+            <span class="material-icons-outlined">{{ getTypeIcon(linked.issueType) }}</span>
+          </div>
+          <div class="context-issue-body">
+            <div class="context-issue-top">
+              <span class="context-issue-key">{{ linked.key }}</span>
+              <span class="badge" [class]="getTypeBadgeClass(linked.issueType)">{{ linked.issueType }}</span>
+              <span class="badge" [class]="getStatusBadgeClass(linked.status)">{{ linked.status }}</span>
+              <span class="context-priority-dot" *ngIf="linked.priority"
+                    [style.background]="getPriorityColor(linked.priority)"
+                    [title]="linked.priority"></span>
+            </div>
+            <div class="context-issue-summary">{{ linked.summary }}</div>
+            <div class="context-issue-desc" *ngIf="linked.description">
+              {{ linked.description.length > 200 ? linked.description.substring(0, 200) + '...' : linked.description }}
+            </div>
+            <div class="context-issue-meta">
+              <span class="context-meta-item" *ngIf="linked.assignee">
+                <span class="material-icons-outlined">person</span> {{ linked.assignee }}
+              </span>
+              <span class="context-meta-item" *ngIf="linked.epicName">
+                <span class="material-icons-outlined">auto_awesome</span> {{ linked.epicName }}
+              </span>
+              <span class="context-meta-item" *ngIf="linked.sprintName">
+                <span class="material-icons-outlined">sprint</span> {{ linked.sprintName }}
+              </span>
+            </div>
+          </div>
+          <span class="material-icons-outlined context-issue-arrow">chevron_right</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- No linked context -->
+    <div class="empty-state" *ngIf="!analysis.epicDetails && (!analysis.linkedIssueDetails || analysis.linkedIssueDetails.length === 0)">
+      <span class="material-icons-outlined empty-icon">link_off</span>
+      <h3>No Linked Context</h3>
+      <p>This issue has no linked epic or related issues.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Image Lightbox ============ -->
+<div class="lightbox-overlay" *ngIf="lightboxImage" (click)="closeLightbox()">
+  <div class="lightbox-content" (click)="$event.stopPropagation()">
+    <div class="lightbox-header">
+      <span class="lightbox-filename">{{ lightboxFilename }}</span>
+      <div class="lightbox-actions">
+        <a class="lightbox-btn" [href]="lightboxImage" target="_blank" title="Open in new tab">
+          <span class="material-icons-outlined">open_in_new</span>
+        </a>
+        <button class="lightbox-btn" (click)="closeLightbox()" title="Close">
+          <span class="material-icons-outlined">close</span>
+        </button>
+      </div>
+    </div>
+    <div class="lightbox-image-container">
+      <img [src]="lightboxImage" [alt]="lightboxFilename" />
+    </div>
+  </div>
+</div>

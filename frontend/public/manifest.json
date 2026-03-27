@@ -1,0 +1,7 @@
+{
+  "name": "JIRA Smart Dashboard",
+  "short_name": "JIRA Dashboard",
+  "theme_color": "#0052cc",
+  "background_color": "#f4f5f7",
+  "display": "standalone"
+}

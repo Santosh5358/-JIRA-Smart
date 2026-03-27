@@ -1,0 +1,321 @@
+<div class="dashboard-container fade-in">
+  <!-- Connection status (only when checking or failed) -->
+  <div class="conn-status-bar" *ngIf="isCheckingConnection">
+    <div class="spinner-sm"></div>
+    <span>Connecting to JIRA...</span>
+  </div>
+  <div class="conn-status-bar conn-failed" *ngIf="!isCheckingConnection && connectionStatus && !connectionStatus.connected">
+    <span class="material-icons-outlined">cloud_off</span>
+    <span>JIRA not connected<span class="conn-error-text" *ngIf="connectionStatus.error"> &mdash; {{ connectionStatus.error }}</span></span>
+    <button class="btn btn-secondary btn-sm" (click)="checkJiraConnection()">
+      <span class="material-icons-outlined">refresh</span>
+      Retry
+    </button>
+  </div>
+
+  <!-- Dashboard Header -->
+  <div class="dashboard-header">
+    <div class="header-text">
+      <h1 class="page-title">My Issues</h1>
+      <p class="page-subtitle">Active work sorted by priority &mdash; click any issue for AI analysis</p>
+    </div>
+  </div>
+
+  <!-- Search / Filter Bar -->
+  <div class="filter-bar card">
+    <div class="filter-row">
+      <div class="input-group select-group">
+        <span class="material-icons-outlined input-icon">filter_list</span>
+        <select [(ngModel)]="statusFilter" class="select-field" (change)="loadIssues()">
+          <option value="">All Statuses</option>
+          <option *ngFor="let s of statusOptions" [value]="s">{{ s || 'All Statuses' }}</option>
+        </select>
+      </div>
+
+      <div class="input-group select-group">
+        <span class="material-icons-outlined input-icon">category</span>
+        <select [(ngModel)]="typeFilter" class="select-field" (change)="loadIssues()">
+          <option value="">All Types</option>
+          <option *ngFor="let t of typeOptions" [value]="t">{{ t || 'All Types' }}</option>
+        </select>
+      </div>
+
+      <button class="btn btn-secondary btn-sm" (click)="loadIssues()" [disabled]="isLoading" title="Refresh issues">
+        <span class="material-icons-outlined">refresh</span>
+        Refresh
+      </button>
+    </div>
+
+    <div class="search-row" *ngIf="dashboardData">
+      <div class="search-row-inner">
+        <div class="input-group search-input">
+          <span class="material-icons-outlined input-icon">search</span>
+          <input
+            type="text"
+            [(ngModel)]="searchText"
+            placeholder="Search by key, summary, type, or status..."
+            class="input-field"
+            (input)="filterIssues()"
+          />
+        </div>
+        <label class="toggle-label">
+          <input type="checkbox" [checked]="hideClosedSubtasks" (change)="toggleClosedSubtasks()" />
+          <span>Hide closed sub-tasks</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active Stats (computed from real data, not raw API) -->
+  <div class="stats-row" *ngIf="dashboardData">
+    <div class="stat-card card">
+      <div class="stat-icon total">
+        <span class="material-icons-outlined">assignment</span>
+      </div>
+      <div class="stat-info">
+        <span class="stat-value">{{ activeStats.total }}</span>
+        <span class="stat-label">Active Issues</span>
+      </div>
+    </div>
+    <div class="stat-card card">
+      <div class="stat-icon stories">
+        <span class="material-icons-outlined">auto_stories</span>
+      </div>
+      <div class="stat-info">
+        <span class="stat-value">{{ activeStats.stories }}</span>
+        <span class="stat-label">Stories</span>
+      </div>
+    </div>
+    <div class="stat-card card">
+      <div class="stat-icon defects">
+        <span class="material-icons-outlined">bug_report</span>
+      </div>
+      <div class="stat-info">
+        <span class="stat-value">{{ activeStats.defects }}</span>
+        <span class="stat-label">Defects</span>
+      </div>
+    </div>
+    <div class="stat-card card">
+      <div class="stat-icon tasks">
+        <span class="material-icons-outlined">task_alt</span>
+      </div>
+      <div class="stat-info">
+        <span class="stat-value">{{ activeStats.tasks }}</span>
+        <span class="stat-label">Tasks</span>
+      </div>
+    </div>
+    <div class="stat-card card" *ngIf="activeStats.blocked > 0">
+      <div class="stat-icon blocked">
+        <span class="material-icons-outlined">block</span>
+      </div>
+      <div class="stat-info">
+        <span class="stat-value">{{ activeStats.blocked }}</span>
+        <span class="stat-label">Blocked</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= FOCUS: Needs Your Attention NOW ======= -->
+  <div class="focus-section" *ngIf="focusIssues.length > 0 && !isLoading && !searchText">
+    <div class="section-title">
+      <span class="material-icons-outlined section-title-icon focus-icon">priority_high</span>
+      <h2>Needs Your Attention</h2>
+      <span class="section-count">{{ focusIssues.length }}</span>
+    </div>
+    <div class="issues-list">
+      <div
+        class="issue-card card"
+        *ngFor="let issue of focusIssues; let i = index"
+        [class.emergency-card]="isEmergency(issue)"
+        (click)="openAnalysis(issue)"
+        [style.animation-delay]="i * 30 + 'ms'"
+      >
+        <!-- Emergency pulse -->
+        <div class="emergency-pulse" *ngIf="isEmergency(issue)"></div>
+
+        <div class="issue-card-left">
+          <span class="material-icons-outlined type-icon" [class]="'type-' + issue.issueType.toLowerCase()">
+            {{ getTypeIcon(issue.issueType) }}
+          </span>
+        </div>
+
+        <div class="issue-card-body">
+          <div class="issue-card-top">
+            <span class="issue-key">{{ issue.key }}</span>
+            <span class="badge" [class]="getTypeBadgeClass(issue.issueType)">{{ issue.issueType }}</span>
+            <span class="badge" [class]="getStatusBadgeClass(issue.status)">{{ issue.status }}</span>
+            <span class="badge" [class]="getPriorityBadgeClass(issue.priority)">{{ issue.priority }}</span>
+            <!-- Warnings -->
+            <span class="warning-chip" *ngIf="hasMissingAC(issue)" title="No acceptance criteria defined">
+              <span class="material-icons-outlined">warning_amber</span> No AC
+            </span>
+            <span class="warning-chip desc-warning" *ngIf="hasNoDescription(issue)" title="No description">
+              <span class="material-icons-outlined">notes</span> No Desc
+            </span>
+            <span class="info-chip" *ngIf="hasComments(issue)" title="Has comments — may contain useful context">
+              <span class="material-icons-outlined">chat_bubble_outline</span> {{ issue.comments.length }}
+            </span>
+          </div>
+          <h3 class="issue-summary">{{ issue.summary }}</h3>
+          <div class="issue-meta">
+            <span *ngIf="issue.projectName">
+              <span class="material-icons-outlined meta-icon">folder</span>
+              {{ issue.projectName }}
+            </span>
+            <span *ngIf="issue.epicKey">
+              <span class="material-icons-outlined meta-icon">bolt</span>
+              {{ issue.epicKey }}
+            </span>
+            <span *ngIf="issue.sprintName">
+              <span class="material-icons-outlined meta-icon">directions_run</span>
+              {{ issue.sprintName }}
+            </span>
+            <span>
+              <span class="material-icons-outlined meta-icon">schedule</span>
+              {{ formatDate(issue.updated) }}
+            </span>
+          </div>
+        </div>
+
+        <div class="issue-card-right">
+          <button class="btn btn-accent btn-sm analyze-btn">
+            <span class="material-icons-outlined">auto_awesome</span>
+            Analyze
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= BLOCKED / ON HOLD ======= -->
+  <div class="blocked-section" *ngIf="blockedIssues.length > 0 && !isLoading && !searchText">
+    <div class="section-title">
+      <span class="material-icons-outlined section-title-icon blocked-icon">block</span>
+      <h2>Blocked / On Hold</h2>
+      <span class="section-count blocked-count">{{ blockedIssues.length }}</span>
+    </div>
+    <div class="issues-list">
+      <div
+        class="issue-card card blocked-card"
+        *ngFor="let issue of blockedIssues; let i = index"
+        (click)="openAnalysis(issue)"
+        [style.animation-delay]="i * 30 + 'ms'"
+      >
+        <div class="issue-card-left">
+          <span class="material-icons-outlined type-icon blocked-type">block</span>
+        </div>
+
+        <div class="issue-card-body">
+          <div class="issue-card-top">
+            <span class="issue-key">{{ issue.key }}</span>
+            <span class="badge" [class]="getTypeBadgeClass(issue.issueType)">{{ issue.issueType }}</span>
+            <span class="badge badge-status-blocked">{{ issue.status }}</span>
+            <span class="badge" [class]="getPriorityBadgeClass(issue.priority)">{{ issue.priority }}</span>
+            <span class="info-chip" *ngIf="hasComments(issue)">
+              <span class="material-icons-outlined">chat_bubble_outline</span> {{ issue.comments.length }}
+            </span>
+          </div>
+          <h3 class="issue-summary blocked-summary">{{ issue.summary }}</h3>
+          <div class="issue-meta">
+            <span *ngIf="issue.projectName">
+              <span class="material-icons-outlined meta-icon">folder</span>
+              {{ issue.projectName }}
+            </span>
+            <span>
+              <span class="material-icons-outlined meta-icon">schedule</span>
+              {{ formatDate(issue.updated) }}
+            </span>
+          </div>
+        </div>
+
+        <div class="issue-card-right">
+          <button class="btn btn-secondary btn-sm analyze-btn">
+            <span class="material-icons-outlined">auto_awesome</span>
+            View
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Message -->
+  <div class="error-banner" *ngIf="errorMessage">
+    <span class="material-icons-outlined">error_outline</span>
+    <span>{{ errorMessage }}</span>
+  </div>
+
+  <!-- Loading State -->
+  <div class="loading-container" *ngIf="isLoading">
+    <div class="spinner"></div>
+    <p>Fetching your JIRA issues...</p>
+  </div>
+
+  <!-- ======= ALL ISSUES (filtered) ======= -->
+  <div class="all-issues-section" *ngIf="!isLoading && filteredIssues.length > 0 && searchText">
+    <div class="section-title">
+      <span class="material-icons-outlined section-title-icon">search</span>
+      <h2>Search Results</h2>
+      <span class="section-count">{{ filteredIssues.length }}</span>
+    </div>
+    <div class="issues-list">
+      <div
+        class="issue-card card"
+        *ngFor="let issue of filteredIssues; let i = index"
+        [class.closed-card]="isClosedOrDone(issue)"
+        [class.blocked-card]="isBlocked(issue)"
+        (click)="openAnalysis(issue)"
+        [style.animation-delay]="i * 30 + 'ms'"
+      >
+        <div class="issue-card-left">
+          <span class="material-icons-outlined type-icon" [class]="'type-' + issue.issueType.toLowerCase()">
+            {{ getTypeIcon(issue.issueType) }}
+          </span>
+        </div>
+
+        <div class="issue-card-body">
+          <div class="issue-card-top">
+            <span class="issue-key">{{ issue.key }}</span>
+            <span class="badge" [class]="getTypeBadgeClass(issue.issueType)">{{ issue.issueType }}</span>
+            <span class="badge" [class]="getStatusBadgeClass(issue.status)">{{ issue.status }}</span>
+            <span class="badge" [class]="getPriorityBadgeClass(issue.priority)">{{ issue.priority }}</span>
+          </div>
+          <h3 class="issue-summary">{{ issue.summary }}</h3>
+          <div class="issue-meta">
+            <span *ngIf="issue.projectName">
+              <span class="material-icons-outlined meta-icon">folder</span>
+              {{ issue.projectName }}
+            </span>
+            <span>
+              <span class="material-icons-outlined meta-icon">schedule</span>
+              {{ formatDate(issue.updated) }}
+            </span>
+          </div>
+        </div>
+
+        <div class="issue-card-right">
+          <button class="btn btn-accent btn-sm analyze-btn">
+            <span class="material-icons-outlined">auto_awesome</span>
+            Analyze
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty State -->
+  <div class="empty-state" *ngIf="!isLoading && dashboardData && filteredIssues.length === 0 && focusIssues.length === 0">
+    <span class="material-icons-outlined empty-icon">inbox</span>
+    <h3>No issues found</h3>
+    <p>No matching issues found. Try adjusting your filters.</p>
+  </div>
+
+  <!-- Welcome State -->
+  <div class="welcome-state" *ngIf="!isLoading && !dashboardData && !errorMessage">
+    <div class="welcome-card card">
+      <span class="material-icons-outlined welcome-icon">rocket_launch</span>
+      <h2>Welcome to JIRA Smart Dashboard</h2>
+      <p>Loading your issues{{ currentDisplayName ? ', ' + currentDisplayName : '' }}...</p>
+      <p class="welcome-hint">Click on any issue to get <strong>AI-powered analysis</strong> &mdash; understand what to build without asking PO or BA!</p>
+    </div>
+  </div>
+</div>

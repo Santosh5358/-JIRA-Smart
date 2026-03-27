@@ -1,0 +1,12 @@
+# ========== DEV PROFILE ==========
+# Used for local development. Secrets can have defaults here.
+
+logging:
+  level:
+    com.dashboard.jira: DEBUG
+    org.springframework.web: INFO
+
+# In dev, allow any origin for convenience
+app:
+  cors:
+    allowed-origins: http://localhost:4200,http://localhost:4300

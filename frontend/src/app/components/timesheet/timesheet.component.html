@@ -1,0 +1,218 @@
+<div class="timesheet-page fade-in">
+  <!-- Page Header -->
+  <div class="ts-page-header">
+    <div class="ts-page-header-left">
+      <span class="material-icons-outlined ts-page-icon">schedule</span>
+      <div>
+        <h1 class="ts-page-title">Sprint Timesheet</h1>
+        <p class="ts-page-subtitle" *ngIf="currentDisplayName">
+          {{ currentDisplayName }}'s work log for the current sprint
+        </p>
+      </div>
+    </div>
+    <button class="btn btn-secondary btn-sm" (click)="loadTimesheet()" [disabled]="isLoading">
+      <span class="material-icons-outlined">refresh</span>
+      Refresh
+    </button>
+  </div>
+
+  <!-- Date Range Picker -->
+  <div class="ts-date-filter">
+    <div class="date-filter-toggle">
+      <label class="toggle-label">
+        <input type="checkbox" [(ngModel)]="useCustomDates" (change)="loadTimesheet()" />
+        <span class="toggle-switch"></span>
+        <span class="toggle-text">Custom Date Range</span>
+      </label>
+    </div>
+    <div class="date-filter-inputs" *ngIf="useCustomDates">
+      <div class="date-field">
+        <label class="date-label">Start Date</label>
+        <input type="date" class="date-input" [(ngModel)]="customStartDate" (change)="loadTimesheet()" />
+      </div>
+      <span class="date-arrow material-icons-outlined">arrow_forward</span>
+      <div class="date-field">
+        <label class="date-label">End Date</label>
+        <input type="date" class="date-input" [(ngModel)]="customEndDate" (change)="loadTimesheet()" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div class="ts-loading" *ngIf="isLoading">
+    <div class="spinner"></div>
+    <p>Loading sprint worklogs...</p>
+  </div>
+
+  <!-- Error -->
+  <div class="error-banner" *ngIf="errorMessage">
+    <span class="material-icons-outlined">error_outline</span>
+    <span>{{ errorMessage }}</span>
+  </div>
+
+  <!-- Timesheet Data -->
+  <div *ngIf="timesheetData && !isLoading">
+    <!-- Sprint Summary Card -->
+    <div class="ts-summary-card">
+      <div class="ts-sprint-info">
+        <span class="material-icons-outlined sprint-icon">directions_run</span>
+        <div>
+          <strong class="sprint-name">{{ timesheetData.sprintName || 'Current Sprint' }}</strong>
+          <span class="sprint-dates" *ngIf="timesheetData.sprintStartDate">
+            {{ formatDate(timesheetData.sprintStartDate) }} &rarr; {{ formatDate(timesheetData.sprintEndDate) }}
+          </span>
+        </div>
+      </div>
+
+      <div class="ts-stats-row">
+        <div class="ts-stat-card">
+          <span class="ts-stat-value primary">{{ formatHours(timesheetData.totalLoggedHours) }}</span>
+          <span class="ts-stat-label">Total Logged</span>
+        </div>
+        <div class="ts-stat-card">
+          <span class="ts-stat-value">{{ formatHours(getTimesheetTotalTarget()) }}</span>
+          <span class="ts-stat-label">Total Target</span>
+        </div>
+        <div class="ts-stat-card">
+          <span class="ts-stat-value" [class.danger]="getUnderTargetDays() > 0">{{ getUnderTargetDays() }}</span>
+          <span class="ts-stat-label">Under 7h Days</span>
+        </div>
+        <div class="ts-stat-card">
+          <span class="ts-stat-value">{{ timesheetData.entries.length }}</span>
+          <span class="ts-stat-label">Tasks</span>
+        </div>
+        <div class="ts-stat-card">
+          <span class="ts-stat-value accent">{{ getTotalLoggedPercent() }}%</span>
+          <span class="ts-stat-label">Completion</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- View Toggle -->
+    <div class="ts-view-toggle">
+      <button class="ts-view-btn" [class.active]="timesheetView === 'daily'" (click)="timesheetView = 'daily'">
+        <span class="material-icons-outlined">calendar_today</span>
+        Daily View
+      </button>
+      <button class="ts-view-btn" [class.active]="timesheetView === 'tasks'" (click)="timesheetView = 'tasks'">
+        <span class="material-icons-outlined">list</span>
+        Task View
+      </button>
+    </div>
+
+    <!-- ===== DAILY VIEW ===== -->
+    <div class="ts-daily-view" *ngIf="timesheetView === 'daily'">
+      <div class="ts-daily-row" *ngFor="let day of timesheetData.dailyBreakdown"
+           [class.ts-today]="day.isToday"
+           [class.ts-weekend]="day.isWeekend"
+           [class.ts-under-target]="day.underTarget">
+
+        <div class="ts-day-info">
+          <span class="ts-day-name" [class.ts-today-badge]="day.isToday">{{ day.dayOfWeek }}</span>
+          <span class="ts-day-date">{{ formatShortDate(day.date) }}</span>
+        </div>
+
+        <div class="ts-day-bar-container">
+          <div class="ts-day-bar-track">
+            <div class="ts-day-bar-fill"
+                 [style.width.%]="getDayBarWidth(day)"
+                 [class.ts-bar-ok]="!day.underTarget && !day.isWeekend"
+                 [class.ts-bar-under]="day.underTarget"
+                 [class.ts-bar-weekend]="day.isWeekend">
+            </div>
+            <div class="ts-day-bar-overflow"
+                 *ngIf="getDayBarOverflow(day) > 0"
+                 [style.width.%]="getDayBarOverflow(day)">
+            </div>
+          </div>
+          <div class="ts-target-line" *ngIf="!day.isWeekend" title="Target: {{ day.targetHours }}h"></div>
+        </div>
+
+        <div class="ts-day-hours">
+          <span class="ts-hours-value" [class.ts-hours-danger]="day.underTarget">
+            {{ formatHours(day.loggedHours) }}
+          </span>
+          <span class="ts-hours-target" *ngIf="!day.isWeekend">/ {{ day.targetHours }}h</span>
+          <span class="ts-hours-target" *ngIf="day.isWeekend">/ 0h</span>
+        </div>
+
+        <div class="ts-day-alert" *ngIf="day.underTarget">
+          <span class="material-icons-outlined">warning_amber</span>
+        </div>
+
+        <!-- Issue breakdown tooltip on hover -->
+        <div class="ts-day-breakdown" *ngIf="getIssueKeysForDay(day).length > 0">
+          <span class="ts-breakdown-item" *ngFor="let key of getIssueKeysForDay(day)">
+            {{ key }}: {{ formatHours(day.issueBreakdown[key]) }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== TASK VIEW ===== -->
+    <div class="ts-task-view" *ngIf="timesheetView === 'tasks'">
+      <table class="ts-table">
+        <thead>
+          <tr>
+            <th class="th-key">Key</th>
+            <th class="th-type"></th>
+            <th class="th-summary">Summary</th>
+            <th>Status</th>
+            <th>Resolution</th>
+            <th>Reporter</th>
+            <th>Assignee</th>
+            <th>Created</th>
+            <th>Updated</th>
+            <th class="th-hours">Time Spent</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let entry of timesheetData.entries"
+              [class.ts-row-zero]="entry.loggedHours === 0"
+              (click)="router.navigate(['/issue', entry.issueKey])">
+            <td class="ts-key">{{ entry.issueKey }}</td>
+            <td class="ts-type-cell">
+              <span class="material-icons-outlined ts-type-icon" [class]="'type-' + entry.issueType.toLowerCase()">
+                {{ getTypeIcon(entry.issueType) }}
+              </span>
+            </td>
+            <td class="ts-summary">
+              <span class="ts-parent-ref" *ngIf="entry.parentKey">{{ entry.parentKey }} / </span>
+              {{ entry.summary }}
+            </td>
+            <td>
+              <span class="ts-status-badge" [class]="getTimesheetStatusClass(entry)">
+                {{ entry.status }}
+              </span>
+            </td>
+            <td class="ts-resolution">{{ entry.resolution || '&mdash;' }}</td>
+            <td class="ts-person">{{ entry.reporter }}</td>
+            <td class="ts-person">{{ entry.assignee }}</td>
+            <td class="ts-date">{{ formatDate(entry.created) }}</td>
+            <td class="ts-date">{{ formatDate(entry.updated) }}</td>
+            <td class="ts-logged-cell" [class.ts-logged-zero]="entry.loggedHours === 0">
+              {{ entry.timeSpentDisplay || '0' }}
+            </td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr class="ts-total-row">
+            <td colspan="9" class="ts-total-label">
+              <strong>Total ({{ timesheetData.entries.length }} issues)</strong>
+            </td>
+            <td class="ts-logged-cell ts-total-value">
+              <strong>{{ formatHours(timesheetData.totalLoggedHours) }}</strong>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Empty State -->
+  <div class="ts-empty" *ngIf="!isLoading && !timesheetData && !errorMessage">
+    <span class="material-icons-outlined">hourglass_empty</span>
+    <h3>No timesheet data</h3>
+    <p>No sprint or worklog data found for your account.</p>
+  </div>
+</div>
