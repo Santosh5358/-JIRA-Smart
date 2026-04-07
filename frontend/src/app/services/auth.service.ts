@@ -24,7 +24,7 @@ export interface LoginResponse {
   providedIn: 'root'
 })
 export class AuthService {
-  private readonly baseUrl = `${environment.apiBaseUrl}/api/auth`;
+  private readonly baseUrl = `${environment.apiBaseUrl}/auth`;
   private readonly TOKEN_KEY = 'jira_jwt_token';
   private readonly USER_KEY = 'jira_user_info';
 
