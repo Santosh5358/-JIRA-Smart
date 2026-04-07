@@ -24,7 +24,7 @@ export interface LoginResponse {
   providedIn: 'root'
 })
 export class AuthService {
-  private readonly baseUrl = `${environment.apiBaseUrl}/auth`;
+  private readonly baseUrl = `${environment.apiBaseUrl}/api/auth`;
   private readonly TOKEN_KEY = 'jira_jwt_token';
   private readonly USER_KEY = 'jira_user_info';
 
@@ -39,7 +39,6 @@ export class AuthService {
    * Login with JIRA credentials
    */
   login(credentials: LoginRequest): Observable<LoginResponse> {
-    console.log("login url",this.baseUrl);
     return this.http.post<LoginResponse>(`${this.baseUrl}/login`, credentials).pipe(
       tap(response => {
         if (response.success && response.token) {
